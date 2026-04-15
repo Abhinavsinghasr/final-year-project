@@ -24,13 +24,13 @@ float vCalibration = 42.7;
 float currCalibration = 1.80;
 
 /* ================= WIFI & BLYNK ================= */
-const char auth[] = "biKRNgUrL1MOLJzMovV9zQF2bmZdJw2Z";
-const char ssid[] = "AmandeepS23Ultra"; //Set WiFi name of 2.4GHz Only. 5GHz network not supported
-const char pass[] = "Lucifer2003";
+const char auth[] = "YOUR_BLYNK_AUTH_TOKEN";
+const char ssid[] = "Wifi_Name"; //Set WiFi name of 2.4GHz Only. 5GHz network not supported
+const char pass[] = "Wifi_Password";
 
 /* ================= TELEGRAM ================= */
-const char* telegramBotToken = "8429310310:AAE7d7tmEyVtxhWOBCrrX7_aAhuF7N2ta8g";
-const char* telegramChatID   = "6624649927";
+const char* telegramBotToken = "telegramBotToken";
+const char* telegramChatID   = "telegramChatID ";
 
 /* ================= ENERGY ================= */
 EnergyMonitor emon;

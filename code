@@ -1,5 +1,5 @@
-#define BLYNK_TEMPLATE_ID "Blynk_Template_ID"
-#define BLYNK_TEMPLATE_NAME "Blynk_Template_Name"
+#define BLYNK_TEMPLATE_ID "TMPL3p288Rsod"
+#define BLYNK_TEMPLATE_NAME "IOT SMART ENERGY METER"
 #define BLYNK_PRINT Serial
 
 #include "EmonLib.h"
@@ -10,6 +10,7 @@
 #include <BlynkSimpleEsp32.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <math.h>
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
@@ -19,17 +20,17 @@ unsigned long buttonPressTime = 0;
 bool buttonHeld = false;
 
 /* ================= CALIBRATION ================= */
-float vCalibration;
-float currCalibration;
+float vCalibration = 42.7;
+float currCalibration = 1.80;
 
 /* ================= WIFI & BLYNK ================= */
-const char auth[] = "Blynk_Template_Auth_Token";
-const char ssid[] = "Wifi_Name";
-const char pass[] = "Wifi_Password";
+const char auth[] = "biKRNgUrL1MOLJzMovV9zQF2bmZdJw2Z";
+const char ssid[] = "AmandeepS23Ultra"; //Set WiFi name of 2.4GHz Only. 5GHz network not supported
+const char pass[] = "Lucifer2003";
 
 /* ================= TELEGRAM ================= */
-const char* telegramBotToken = "YOUR_TELEGRAM_BOT_TOKEN";
-const char* telegramChatID   = "YOUR_TELEGRAM_CHAT_ID";
+const char* telegramBotToken = "8429310310:AAE7d7tmEyVtxhWOBCrrX7_aAhuF7N2ta8g";
+const char* telegramChatID   = "6624649927";
 
 /* ================= ENERGY ================= */
 EnergyMonitor emon;
@@ -49,6 +50,11 @@ const int addrCost = 16;
 /* ================= DISPLAY ================= */
 int displayPage = 0;
 
+/* ================= FLAGS ================= */
+bool wifiEnabled = false;
+bool blynkEnabled = false;
+bool telegramEnabled = false;
+
 /* ================= FUNCTION DECLARATIONS ================= */
 void sendEnergyData();
 void readEnergyDataFromEEPROM();
@@ -59,6 +65,113 @@ void checkButtonCalibration();
 void performCalibration();
 void sendTelegramReport();
 
+bool isValueSet(const char* value);
+void setupConnectivity();
+
+/* ======================================================== */
+bool isValueSet(const char* value) {
+  if (value == nullptr) return false;
+  if (strlen(value) == 0) return false;
+
+  String s = String(value);
+  s.trim();
+
+  if (s.length() == 0) return false;
+
+  // Common placeholder checks
+  if (s == "Wifi_Name") return false;
+  if (s == "Wifi_Password") return false;
+  if (s == "Blynk_Template_Auth_Token") return false;
+  if (s == "Blynk_Template_ID") return false;
+  if (s == "Blynk_Template_Name") return false;
+  if (s == "YOUR_TELEGRAM_BOT_TOKEN") return false;
+  if (s == "YOUR_TELEGRAM_CHAT_ID") return false;
+  if (s == "null") return false;
+  if (s == "NULL") return false;
+  if (s == "-") return false;
+
+  return true;
+}
+
+/* ======================================================== */
+void setupConnectivity() {
+
+  wifiEnabled = isValueSet(ssid) && isValueSet(pass);
+  blynkEnabled = wifiEnabled &&
+                 isValueSet(auth) &&
+                 isValueSet(BLYNK_TEMPLATE_ID) &&
+                 isValueSet(BLYNK_TEMPLATE_NAME);
+  telegramEnabled = wifiEnabled &&
+                    isValueSet(telegramBotToken) &&
+                    isValueSet(telegramChatID);
+
+  if (!wifiEnabled) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Local Mode");
+    lcd.setCursor(0, 1);
+    lcd.print("WiFi Not Set");
+    Serial.println("WiFi credentials not set. Running in local mode.");
+    delay(1500);
+    return;
+  }
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting WiFi");
+  Serial.println("Connecting to WiFi...");
+
+  WiFi.begin(ssid, pass);
+
+  unsigned long wifiStart = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 10000) {
+    delay(500);
+    Serial.print(".");
+    lcd.setCursor(0, 1);
+    lcd.print("Please wait... ");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi Connected");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi Connected");
+
+    if (blynkEnabled) {
+      lcd.setCursor(0, 1);
+      lcd.print("Connecting Blynk");
+      Serial.println("Connecting Blynk...");
+      Blynk.config(auth);
+      Blynk.connect(5000);
+
+      if (Blynk.connected()) {
+        Serial.println("Blynk Connected");
+      } else {
+        Serial.println("Blynk not connected. Continuing local mode.");
+      }
+    } else {
+      Serial.println("Blynk credentials not set. Skipping Blynk.");
+      lcd.setCursor(0, 1);
+      lcd.print("Blynk Disabled  ");
+    }
+
+    delay(1500);
+  }
+  else {
+    Serial.println("WiFi connection failed. Running in local mode.");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Offline Mode");
+    lcd.setCursor(0, 1);
+    lcd.print("LCD Working");
+    delay(1500);
+  }
+}
+
 /* ======================================================== */
 void setup() {
 
@@ -67,28 +180,12 @@ void setup() {
 
   lcd.init();
   lcd.backlight();
-  lcd.print("Connecting WiFi");
-
-  WiFi.begin(ssid, pass);
-
-  unsigned long wifiStart = millis();
-
-  while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 10000) {
-    delay(500);
-    lcd.print(".");
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    lcd.clear();
-    lcd.print("WiFi Connected");
-    Blynk.config(auth);
-    Blynk.connect(5000);
-  }
-  else {
-    lcd.clear();
-    lcd.print("Offline Mode");
-    delay(2000);
-  }
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Energy Meter");
+  lcd.setCursor(0, 1);
+  lcd.print("Starting...");
+  delay(1000);
 
   EEPROM.begin(64);
 
@@ -103,6 +200,8 @@ void setup() {
   emon.voltage(35, vCalibration, 1.7);
   emon.current(34, currCalibration);
 
+  setupConnectivity();
+
   lastMillis = millis();
 
   timer.setInterval(2000L, sendEnergyData);
@@ -115,7 +214,7 @@ void setup() {
 /* ======================================================== */
 void loop() {
 
-  if (WiFi.status() == WL_CONNECTED) {
+  if (wifiEnabled && WiFi.status() == WL_CONNECTED && blynkEnabled) {
     Blynk.run();
   }
 
@@ -142,14 +241,12 @@ void sendEnergyData() {
   saveEnergyDataToEEPROM();
 
   /* ===== BLYNK UPDATE ===== */
-  if (WiFi.status() == WL_CONNECTED && Blynk.connected()) {
-
+  if (wifiEnabled && WiFi.status() == WL_CONNECTED && blynkEnabled && Blynk.connected()) {
     Blynk.virtualWrite(V0, Vrms);
     Blynk.virtualWrite(V1, Irms);
     Blynk.virtualWrite(V2, apparentPower);
     Blynk.virtualWrite(V3, kWh);
     Blynk.virtualWrite(V4, cost);
-
   }
 
   updateLCD();
@@ -212,8 +309,13 @@ void performCalibration() {
   avgVoltage /= 10.0;
   avgPower /= 10.0;
 
-  vCalibration = vCalibration * (actualVoltage / avgVoltage);
-  currCalibration = currCalibration * (actualPower / avgPower);
+  if (avgVoltage != 0) {
+    vCalibration = vCalibration * (actualVoltage / avgVoltage);
+  }
+
+  if (avgPower != 0) {
+    currCalibration = currCalibration * (actualPower / avgPower);
+  }
 
   EEPROM.put(addrVcal, vCalibration);
   EEPROM.put(addrIcal, currCalibration);
@@ -226,6 +328,8 @@ void performCalibration() {
 /* ======================================================== */
 void sendTelegramReport() {
 
+  if (!telegramEnabled) return;
+  if (!wifiEnabled) return;
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
@@ -238,19 +342,20 @@ void sendTelegramReport() {
   DynamicJsonDocument doc(256);
 
   doc["chat_id"] = telegramChatID;
-
   doc["text"] =
     "📊 Energy Report\n"
-    "Voltage: " + String(emon.Vrms,0) + "V\n" +
-    "Power: " + String(emon.apparentPower,0) + "W\n" +
-    "Energy: " + String(kWh,3) + " kWh\n" +
-    "Cost: ₹" + String(cost,2);
+    "Voltage: " + String(emon.Vrms, 0) + "V\n" +
+    "Power: " + String(emon.apparentPower, 0) + "W\n" +
+    "Energy: " + String(kWh, 3) + " kWh\n" +
+    "Cost: ₹" + String(cost, 2);
 
   String payload;
-
   serializeJson(doc, payload);
 
-  http.POST(payload);
+  int httpCode = http.POST(payload);
+  Serial.print("Telegram HTTP Code: ");
+  Serial.println(httpCode);
+
   http.end();
 }
 
@@ -260,8 +365,8 @@ void readEnergyDataFromEEPROM() {
   EEPROM.get(addrKWh, kWh);
   EEPROM.get(addrCost, cost);
 
-  if (isnan(kWh)) kWh = 0;
-  if (isnan(cost)) cost = 0;
+  if (isnan(kWh) || kWh < 0) kWh = 0;
+  if (isnan(cost) || cost < 0) cost = 0;
 }
 
 void saveEnergyDataToEEPROM() {
@@ -277,17 +382,15 @@ void updateLCD() {
   lcd.clear();
 
   if (displayPage == 0) {
-
     lcd.setCursor(0, 0);
     lcd.printf("V:%.0f I:%.2f", emon.Vrms, emon.Irms);
 
     lcd.setCursor(0, 1);
-    lcd.printf("Power:%.0fW", emon.apparentPower);
+    lcd.printf("P:%.0fW", emon.apparentPower);
   }
   else {
-
     lcd.setCursor(0, 0);
-    lcd.printf("Energy:%.3fkWh", kWh);
+    lcd.printf("E:%.3fkWh", kWh);
 
     lcd.setCursor(0, 1);
     lcd.printf("Cost:%.2f", cost);
@@ -295,6 +398,5 @@ void updateLCD() {
 }
 
 void changeDisplayPage() {
-
   displayPage = (displayPage + 1) % 2;
 }
